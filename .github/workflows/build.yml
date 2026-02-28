@@ -15,32 +15,37 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # 同步升级到最新稳定版
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # 升级到最新稳定版
         with:
           python-version: '3.11' # 建议使用稳定版本
+          cache: 'pip'  # 缓存pip依赖，加速构建
 
       - name: Install dependencies
         run: |
+          pip install --upgrade pip  # 升级pip避免安装问题
           pip install flet pyperclip
 
-      - name: Build for ${{ matrix.os }}
+      - name: Build for macOS
+        if: runner.os == 'macOS'
         run: |
-          # macOS 构建
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
-          # Windows 构建
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
-          # Linux 构建
-          else
-            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
-          fi
+          flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
+
+      - name: Build for Windows
+        if: runner.os == 'Windows'
+        run: |
+          flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.ico
+
+      - name: Build for Linux
+        if: runner.os == 'Linux'
+        run: |
+          flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.png
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 核心修复：升级到v4版本
         with:
           name: ${{ runner.os }}-build
           path: dist/
+          if-no-files-found: error  # 无文件时明确报错，便于排查
