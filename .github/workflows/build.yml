@@ -1,0 +1,46 @@
+name: Build Talk Tool App
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当你推送 v1.0, v1.1 等标签时触发构建
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11' # 建议使用稳定版本
+
+      - name: Install dependencies
+        run: |
+          pip install flet pyperclip
+
+      - name: Build for ${{ matrix.os }}
+        run: |
+          # macOS 构建
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
+          # Windows 构建
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
+          # Linux 构建
+          else
+            flet pack context_flow_flet.py --product-name "AI Talk Tool" --icon app.icns
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }}-build
+          path: dist/
