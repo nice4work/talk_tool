@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip  # 升级pip避免安装问题
-          pip install flet pyperclip
+          pip install flet pyperclip pyinstaller
 
       - name: Build for macOS
         if: runner.os == 'macOS'
