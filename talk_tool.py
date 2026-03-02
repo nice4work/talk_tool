@@ -135,7 +135,10 @@ def main(page: ft.Page):
         # 使用系统原生剪贴板命令
         try:
             if platform.system() == 'Darwin':  # macOS
-                subprocess.run(['pbcopy'], input=final_string.encode('utf-8'), check=True)
+                # macOS 需要设置 LANG 环境变量来正确处理 UTF-8
+                env = os.environ.copy()
+                env['LANG'] = 'en_US.UTF-8'
+                subprocess.run(['pbcopy'], input=final_string.encode('utf-8'), check=True, env=env)
             elif platform.system() == 'Windows':
                 subprocess.run(['clip'], input=final_string.encode('utf-8'), check=True)
             else:  # Linux
