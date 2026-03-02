@@ -29,15 +29,15 @@ jobs:
       - name: Build for macOS
         if: runner.os == 'macOS'
         run: |
-          # 1. 执行Flet打包
+          # 执行Flet打包（显式指定--onedir模式，可选，也可保留单文件）
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.icns
-          # 2. 列出dist目录内容，确认产物名称（调试用）
+          # 列出dist目录内容，确认产物（调试用）
           echo "=== macOS dist目录内容 ==="
           ls -la dist/
-          # 3. 切换到dist目录，确保能找到.app文件（关键修复）
+          # 切换到dist目录，打包实际生成的单文件
           cd dist
-          # 4. 打包.app文件（兼容可能的名称差异）
-          zip -r "AI_Talk_Tool_macOS.zip" *.app
+          # 产物是talk_tool单文件，打包为zip
+          zip -r "AI_Talk_Tool_macOS.zip" talk_tool
 
       - name: Build for Windows
         if: runner.os == 'Windows'
