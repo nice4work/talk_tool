@@ -11,6 +11,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,36 +27,97 @@ jobs:
           pip install --upgrade pip
           pip install flet pyperclip pyinstaller
 
+      # --- macOS 构建 ---
       - name: Build for macOS
         if: runner.os == 'macOS'
         run: |
-          # 执行Flet打包（显式指定--onedir模式，可选，也可保留单文件）
-          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.icns
-          # 列出dist目录内容，确认产物（调试用）
-          echo "=== macOS dist目录内容 ==="
+          echo "🛠 Starting macOS build..."
+          # 强制使用 onedir 模式以确保结构一致，方便打包
+          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.icns --onedir
+          
+          echo "📂 Contents of dist directory before packing:"
           ls -la dist/
-          # 切换到dist目录，打包实际生成的单文件
+          
+          # Flet onedir 模式通常会生成一个 .app 文件夹或者以产品名命名的文件夹
+          # 我们需要找到生成的主要产物。通常是 dist/AI Talk Tool.app 或 dist/talk_tool
+          # 这里假设生成的是 dist/AI Talk Tool.app (因为指定了 product-name)
+          # 为了稳妥，我们查找 dist 下最大的文件或文件夹
+          
           cd dist
-          # 产物是talk_tool单文件，打包为zip
-          zip -r "AI_Talk_Tool_macOS.zip" talk_tool
+          # 重命名产物为统一名称，避免空格和特殊字符导致后续问题
+          # 假设生成的是 "AI Talk Tool.app"
+          if [ -d "AI Talk Tool.app" ]; then
+            mv "AI Talk Tool.app" "AI_Talk_Tool_macOS.app"
+            zip -r "AI_Talk_Tool_macOS.zip" "AI_Talk_Tool_macOS.app"
+          elif [ -f "talk_tool" ]; then
+             # 如果是单文件模式
+             zip "AI_Talk_Tool_macOS.zip" "talk_tool"
+          else
+            echo "❌ Error: Expected build artifact not found in dist!"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✅ macOS zip created."
+          ls -la *.zip
 
+      # --- Windows 构建 ---
       - name: Build for Windows
         if: runner.os == 'Windows'
+        shell: pwsh # 显式指定 PowerShell
         run: |
-          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.ico
-          echo "=== Windows dist目录内容 ==="
-          dir dist
+          Write-Host "🛠 Starting Windows build..."
+          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.ico --onedir
+          
+          Write-Host "📂 Contents of dist directory before packing:"
+          Get-ChildItem -Path dist | Format-Table
+          
           cd dist
-          powershell Compress-Archive -Path "AI Talk Tool" -DestinationPath "AI_Talk_Tool_Windows.zip"
+          
+          # Windows 下 --onedir 通常生成一个文件夹，名字可能是 "AI Talk Tool"
+          $sourceName = "AI Talk Tool"
+          $zipName = "AI_Talk_Tool_Windows.zip"
+          
+          if (Test-Path "$sourceName") {
+            Compress-Archive -Path "$sourceName" -DestinationPath "$zipName" -Force
+            Write-Host "✅ Windows zip created: $zipName"
+          } elseif (Test-Path "talk_tool.exe") {
+            # 如果是单文件
+            Compress-Archive -Path "talk_tool.exe" -DestinationPath "$zipName" -Force
+            Write-Host "✅ Windows zip created (single file): $zipName"
+          } else {
+            Write-Host "❌ Error: Expected build artifact not found in dist!"
+            Get-ChildItem
+            exit 1
+          }
+          
+          Get-ChildItem *.zip
 
+      # --- Linux 构建 ---
       - name: Build for Linux
         if: runner.os == 'Linux'
         run: |
-          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.png
-          echo "=== Linux dist目录内容 ==="
+          echo "🛠 Starting Linux build..."
+          flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.png --onedir
+          
+          echo "📂 Contents of dist directory before packing:"
           ls -la dist/
+          
           cd dist
-          zip -r "AI_Talk_Tool_Linux.zip" "AI Talk Tool"
+          
+          # Linux 下通常生成一个名为 "AI Talk Tool" 的文件夹或 "talk_tool" 文件
+          if [ -d "AI Talk Tool" ]; then
+            zip -r "AI_Talk_Tool_Linux.zip" "AI Talk Tool"
+          elif [ -f "talk_tool" ]; then
+            zip "AI_Talk_Tool_Linux.zip" "talk_tool"
+          else
+            echo "❌ Error: Expected build artifact not found in dist!"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✅ Linux zip created."
+          ls -la *.zip
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -63,6 +125,7 @@ jobs:
           name: ${{ runner.os }}-build
           path: dist/*.zip
           if-no-files-found: error
+          retention-days: 1 # 只需保留很短时间，因为马上要发布
 
   release:
     needs: build
@@ -72,15 +135,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./release-artifacts
+          merge-multiple: true # 重要：将所有矩阵生成的 artifact 合并到一个目录，简化文件匹配
 
       - name: List Downloaded Files (Debug)
-        run: ls -R ./release-artifacts
+        run: |
+          echo "📂 Files ready for release:"
+          find ./release-artifacts -type f -name "*.zip"
+          ls -la ./release-artifacts
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ./release-artifacts/**/*.zip
+            ./release-artifacts/*.zip
           generate_release_notes: true
+          draft: false # 设为 true 可以先创建草稿，确认无误后再发布
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
