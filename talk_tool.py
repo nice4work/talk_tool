@@ -17,6 +17,9 @@ def main(page: ft.Page):
     page.window_width = 1100
     page.window_height = 750
     page.scroll = ft.ScrollMode.HIDDEN
+    # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
+    if page.window:
+        page.window.icon = "app.ico"
 
     templates = {}
     selected_ids = set()
