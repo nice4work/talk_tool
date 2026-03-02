@@ -3,7 +3,8 @@ import json
 import os
 import uuid
 import asyncio
-import pyperclip
+import subprocess
+import platform
 
 DATA_FILE = "context_templates.json"
 PLACEHOLDER_TEXT = "在此输入你具体要问的问题，它会自动附加在所有模板内容之后..."
@@ -29,12 +30,21 @@ def main(page: ft.Page):
                                         "content": "# Python 规范\n- 遵循 PEP8\n- 类型提示完整"}
             }
         try:
+            # 尝试使用 UTF-8 编码读取
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
+        except UnicodeDecodeError:
+            # 回退到其他编码
+            try:
+                with open(DATA_FILE, 'r', encoding='gbk') as f:
+                    return json.load(f)
+            except Exception:
+                return {}
         except Exception:
             return {}
 
     def save_data():
+        # 确保使用 UTF-8 编码保存，并且禁用 ensure_ascii 以正确处理中文
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(templates, f, ensure_ascii=False, indent=2)
 
@@ -122,43 +132,43 @@ def main(page: ft.Page):
             page.update()
             return
 
-        copied_successfully = False
+        # 使用系统原生剪贴板命令
         try:
-            if hasattr(page, 'clipboard') and hasattr(page.clipboard, 'set_async'):
-                await page.clipboard.set_async(final_string)
-                copied_successfully = True
-            elif hasattr(page, 'set_clipboard'):
-                await page.set_clipboard(final_string)
-                copied_successfully = True
-        except Exception:
-            pass
+            if platform.system() == 'Darwin':  # macOS
+                subprocess.run(['pbcopy'], input=final_string.encode('utf-8'), check=True)
+            elif platform.system() == 'Windows':
+                subprocess.run(['clip'], input=final_string.encode('utf-8'), check=True)
+            else:  # Linux
+                subprocess.run(['xclip', '-selection', 'clipboard'], input=final_string.encode('utf-8'), check=True)
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(ft.Text(f"复制失败: {str(ex)}"))
+            page.snack_bar.open = True
+            page.update()
+            return
 
-        if not copied_successfully:
-            try:
-                pyperclip.copy(final_string)
-                copied_successfully = True
-            except Exception:
-                page.snack_bar = ft.SnackBar(ft.Text("复制失败，请手动复制"))
-                page.snack_bar.open = True
-                page.update()
-                return
+        # 3. 更新按钮 UI (成功分支)
+        button = e.control
+        original_content = button.content
+        # 保存原始样式对象引用，避免丢失
+        original_bgcolor = None
+        if button.style:
+            original_bgcolor = button.style.bgcolor
 
-        original_content = btn_generate.content
-        original_style = btn_generate.style.bgcolor if btn_generate.style else None
-
-        btn_generate.content = f"✅ 已复制 ({len(final_string)} 字符)"
-        if btn_generate.style:
-            btn_generate.style.bgcolor = "green"
+        # 修改按钮状态
+        button.content = f"✅ 已复制 ({len(final_string)} 字符)"
+        if button.style:
+            button.style.bgcolor = "green"
         else:
-            btn_generate.style = ft.ButtonStyle(bgcolor="green")
+            button.style = ft.ButtonStyle(bgcolor="green")  # 注意是 ButtonStyle 不是 ButtonStyle
 
         page.update()
 
         await asyncio.sleep(2)
 
-        btn_generate.content = original_content
-        if btn_generate.style:
-            btn_generate.style.bgcolor = original_style
+        # 恢复按钮状态
+        button.content = original_content
+        if button.style:
+            button.style.bgcolor = original_bgcolor
         page.update()
 
     def clear_all(e):
