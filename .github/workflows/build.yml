@@ -1,5 +1,9 @@
 name: Build Talk Tool App and Release
 
+permissions:
+  contents: write  # 允许创建 Release、上传资产、打标签
+  pull-requests: read # 如果需要生成 release notes 涉及 PR 信息，建议加上
+
 on:
   push:
     tags:
