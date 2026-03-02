@@ -1,51 +1,79 @@
-name: Build Talk Tool App
+name: Build Talk Tool App and Release
 
 on:
   push:
     tags:
-      - 'v*'  # 当你推送 v1.0, v1.1 等标签时触发构建
+      - 'v*'  # 推送v开头标签时触发
 
 jobs:
   build:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # 同步升级到最新稳定版
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5  # 升级到最新稳定版
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # 建议使用稳定版本
-          cache: 'pip'  # 缓存pip依赖，加速构建
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip  # 升级pip避免安装问题
+          pip install --upgrade pip
           pip install flet pyperclip pyinstaller
 
       - name: Build for macOS
         if: runner.os == 'macOS'
         run: |
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.icns
+          # 对macOS产物打包，方便上传和下载
+          cd dist && zip -r "AI_Talk_Tool_macOS.zip" "AI Talk Tool.app" && cd ..
 
       - name: Build for Windows
         if: runner.os == 'Windows'
         run: |
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.ico
+          # Windows产物打包成zip
+          cd dist && powershell Compress-Archive -Path "AI Talk Tool" -DestinationPath "AI_Talk_Tool_Windows.zip" && cd ..
 
       - name: Build for Linux
         if: runner.os == 'Linux'
         run: |
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.png
+          # Linux产物打包成zip
+          cd dist && zip -r "AI_Talk_Tool_Linux.zip" "AI Talk Tool" && cd ..
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4  # 核心修复：升级到v4版本
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
-          path: dist/
-          if-no-files-found: error  # 无文件时明确报错，便于排查
+          path: dist/*.zip  # 只上传打包后的zip文件
+          if-no-files-found: error
+
+  # 新增Release任务：汇总所有构建产物并上传到Release
+  release:
+    needs: build  # 依赖build任务完成后再执行
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-artifacts  # 所有系统的产物下载到统一目录
+
+      - name: List Downloaded Files (Debug)
+        run: ls -R ./release-artifacts  # 列出文件，便于排查
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 上传所有下载的产物文件
+          files: |
+            ./release-artifacts/**/*.zip
+          # 可选：自动生成Release说明
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动授权，无需手动配置
