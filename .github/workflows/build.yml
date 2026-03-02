@@ -3,7 +3,7 @@ name: Build Talk Tool App and Release
 on:
   push:
     tags:
-      - 'v*'  # 推送v开头标签时触发
+      - 'v*'
 
 jobs:
   build:
@@ -29,51 +29,58 @@ jobs:
       - name: Build for macOS
         if: runner.os == 'macOS'
         run: |
+          # 1. 执行Flet打包
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.icns
-          # 对macOS产物打包，方便上传和下载
-          cd dist && zip -r "AI_Talk_Tool_macOS.zip" "AI Talk Tool.app" && cd ..
+          # 2. 列出dist目录内容，确认产物名称（调试用）
+          echo "=== macOS dist目录内容 ==="
+          ls -la dist/
+          # 3. 切换到dist目录，确保能找到.app文件（关键修复）
+          cd dist
+          # 4. 打包.app文件（兼容可能的名称差异）
+          zip -r "AI_Talk_Tool_macOS.zip" *.app
 
       - name: Build for Windows
         if: runner.os == 'Windows'
         run: |
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.ico
-          # Windows产物打包成zip
-          cd dist && powershell Compress-Archive -Path "AI Talk Tool" -DestinationPath "AI_Talk_Tool_Windows.zip" && cd ..
+          echo "=== Windows dist目录内容 ==="
+          dir dist
+          cd dist
+          powershell Compress-Archive -Path "AI Talk Tool" -DestinationPath "AI_Talk_Tool_Windows.zip"
 
       - name: Build for Linux
         if: runner.os == 'Linux'
         run: |
           flet pack talk_tool.py --product-name "AI Talk Tool" --icon app.png
-          # Linux产物打包成zip
-          cd dist && zip -r "AI_Talk_Tool_Linux.zip" "AI Talk Tool" && cd ..
+          echo "=== Linux dist目录内容 ==="
+          ls -la dist/
+          cd dist
+          zip -r "AI_Talk_Tool_Linux.zip" "AI Talk Tool"
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
-          path: dist/*.zip  # 只上传打包后的zip文件
+          path: dist/*.zip
           if-no-files-found: error
 
-  # 新增Release任务：汇总所有构建产物并上传到Release
   release:
-    needs: build  # 依赖build任务完成后再执行
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Download All Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./release-artifacts  # 所有系统的产物下载到统一目录
+          path: ./release-artifacts
 
       - name: List Downloaded Files (Debug)
-        run: ls -R ./release-artifacts  # 列出文件，便于排查
+        run: ls -R ./release-artifacts
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 上传所有下载的产物文件
           files: |
             ./release-artifacts/**/*.zip
-          # 可选：自动生成Release说明
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动授权，无需手动配置
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
