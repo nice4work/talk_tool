@@ -5,16 +5,94 @@ import uuid
 import asyncio
 import subprocess
 import platform
+from tkinter import Tk, filedialog
+
+from wcwidth import width
 
 DATA_FILE = "context_templates.json"
 PLACEHOLDER_TEXT = "在此输入你具体要问的问题，它会自动附加在所有模板内容之后..."
+
+# 默认忽略的目录和文件
+DEFAULT_IGNORE_PATTERNS = {
+    "__pycache__", ".git", ".svn", ".hg", "node_modules", ".venv", "venv",
+    ".idea", ".vscode", ".DS_Store", "*.pyc", "*.pyo", ".env", "dist", "build",
+    "__MACOSX", ".pytest_cache", ".mypy_cache", ".tox", "*.egg-info"
+}
+
+
+def generate_tree_structure(root_path: str, prefix: str = "", ignore_patterns: set = None) -> str:
+    """递归生成目录树结构字符串"""
+    if ignore_patterns is None:
+        ignore_patterns = DEFAULT_IGNORE_PATTERNS
+    
+    result = []
+    root_name = os.path.basename(root_path) or root_path
+    
+    if not prefix:  # 根目录
+        result.append(f"{root_name}/")
+    
+    try:
+        entries = sorted(os.listdir(root_path))
+    except PermissionError:
+        return f"{prefix}[权限不足]\n"
+    
+    # 过滤掉忽略的文件和目录
+    filtered_entries = []
+    for entry in entries:
+        # 过滤隐藏文件和隐藏文件夹（以.开头）
+        if entry.startswith("."):
+            continue
+        should_ignore = False
+        for pattern in ignore_patterns:
+            if pattern.startswith("*"):
+                if entry.endswith(pattern[1:]):
+                    should_ignore = True
+                    break
+            elif entry == pattern:
+                should_ignore = True
+                break
+        if not should_ignore:
+            filtered_entries.append(entry)
+    
+    entries = filtered_entries
+    dirs = []
+    files = []
+    
+    for entry in entries:
+        full_path = os.path.join(root_path, entry)
+        if os.path.isdir(full_path):
+            dirs.append(entry)
+        else:
+            files.append(entry)
+    
+    # 合并目录和文件，目录在前
+    all_items = [(d, True) for d in dirs] + [(f, False) for f in files]
+    
+    for i, (item, is_dir) in enumerate(all_items):
+        is_last = (i == len(all_items) - 1)
+        connector = "└── " if is_last else "├── "
+        
+        if is_dir:
+            result.append(f"{prefix}{connector}{item}/")
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            subtree = generate_tree_structure(
+                os.path.join(root_path, item), 
+                new_prefix, 
+                ignore_patterns
+            )
+            if subtree:
+                result.append(subtree)
+        else:
+            result.append(f"{prefix}{connector}{item}")
+    
+    return "\n".join(result)
 
 
 def main(page: ft.Page):
     page.title = "ContextFlow Pro (Flet 版)"
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 20
-    page.window_width = 1100
+    page.padding = 10
+    page.window_width = 1200
     page.window_height = 800
     page.scroll = ft.ScrollMode.HIDDEN
     # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
@@ -23,6 +101,7 @@ def main(page: ft.Page):
 
     templates = {}
     selected_ids = set()
+    project_structure_info = {"path": None, "content": None}  # 存储项目结构信息
 
     def load_data():
         if not os.path.exists(DATA_FILE):
@@ -89,10 +168,28 @@ def main(page: ft.Page):
     # 输入框容器 - 固定高度，内部用Column实现滚动
     question_container = ft.Container(
         content=ft.Column([question_input], scroll=ft.ScrollMode.AUTO, expand=True),
-        height=120,
+        height=120,width=400
     )
 
     checkbox_list = ft.Column(spacing=5)
+
+    # 使用 tkinter 文件夹选择器
+    def pick_project_folder(e):
+        # 隐藏 tkinter 主窗口
+        root = Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        
+        result = filedialog.askdirectory(title="选择项目文件夹")
+        root.destroy()
+        
+        if result:
+            project_structure_info["path"] = result
+            project_structure_info["content"] = generate_tree_structure(result)
+            update_preview()
+            page.snack_bar = ft.SnackBar(ft.Text(f"已添加项目结构: {os.path.basename(result)}"))
+            page.snack_bar.open = True
+            page.update()
 
     # ================= 核心逻辑 =================
 
@@ -108,6 +205,12 @@ def main(page: ft.Page):
                 header = f"\n\n{'=' * 20} [Context: {data['title']}] {'=' * 20}\n\n"
                 parts.append(header + data["content"])
 
+        # 添加项目结构信息
+        if project_structure_info["content"]:
+            folder_name = os.path.basename(project_structure_info["path"]) if project_structure_info["path"] else "项目"
+            header = f"\n\n{'=' * 20} [Project Structure: {folder_name}] {'=' * 20}\n\n"
+            parts.append(header + "```\n" + project_structure_info["content"] + "\n```")
+
         question = get_real_question()
         if question:
             header = f"\n\n{'=' * 20} [Question] {'=' * 20}\n\n"
@@ -118,7 +221,7 @@ def main(page: ft.Page):
     def update_preview(e=None):
         result = build_content_string()
         if not result:
-            preview_text.value = "(等待操作：请勾选左侧模板 或 在底部输入问题)"
+            preview_text.value = "(等待操作：请勾选左侧模板 / 追加项目结构 / 在底部输入问题)"
         else:
             preview_text.value = result
         page.update()
@@ -203,6 +306,8 @@ def main(page: ft.Page):
     def clear_all(e):
         selected_ids.clear()
         question_input.value = ""
+        project_structure_info["path"] = None
+        project_structure_info["content"] = None
         refresh_sidebar()
         update_preview()
 
@@ -275,7 +380,7 @@ def main(page: ft.Page):
     info_row = ft.Row(
         [
             ft.Text(
-                "💡 操作：勾选左侧模板 + 底部输入问题 -> 自动生成拼接内容",
+                "💡 操作：勾选左侧模板 + 追加项目结构 + 底部输入问题 -> 自动生成拼接内容",
                 size=12,
                 color="grey_400",
             )
@@ -295,6 +400,11 @@ def main(page: ft.Page):
                 [
                     ft.Button(
                         "🧹 清空选择", on_click=clear_all, icon="cleaning_services"
+                    ),
+                    ft.Button(
+                        "📁 追加项目结构",
+                        on_click=pick_project_folder,
+                        icon="folder_open",
                     ),
                     ft.Container(expand=True),
                     btn_generate := ft.Button(
