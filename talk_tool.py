@@ -15,7 +15,7 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 20
     page.window_width = 1100
-    page.window_height = 750
+    page.window_height = 800
     page.scroll = ft.ScrollMode.HIDDEN
     # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
     if page.window:
@@ -27,19 +27,23 @@ def main(page: ft.Page):
     def load_data():
         if not os.path.exists(DATA_FILE):
             return {
-                str(uuid.uuid4())[:8]: {"title": "Vue3 项目规范",
-                                        "content": "# Vue3 规范\n- 使用 script setup\n- 禁止 any"},
-                str(uuid.uuid4())[:8]: {"title": "Python 风格指南",
-                                        "content": "# Python 规范\n- 遵循 PEP8\n- 类型提示完整"}
+                str(uuid.uuid4())[:8]: {
+                    "title": "Vue3 项目规范",
+                    "content": "# Vue3 规范\n- 使用 script setup\n- 禁止 any",
+                },
+                str(uuid.uuid4())[:8]: {
+                    "title": "Python 风格指南",
+                    "content": "# Python 规范\n- 遵循 PEP8\n- 类型提示完整",
+                },
             }
         try:
             # 尝试使用 UTF-8 编码读取
-            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except UnicodeDecodeError:
             # 回退到其他编码
             try:
-                with open(DATA_FILE, 'r', encoding='gbk') as f:
+                with open(DATA_FILE, "r", encoding="gbk") as f:
                     return json.load(f)
             except Exception:
                 return {}
@@ -48,7 +52,7 @@ def main(page: ft.Page):
 
     def save_data():
         # 确保使用 UTF-8 编码保存，并且禁用 ensure_ascii 以正确处理中文
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(templates, f, ensure_ascii=False, indent=2)
 
     templates = load_data()
@@ -64,20 +68,31 @@ def main(page: ft.Page):
         border_color="transparent",
         focused_border_color="transparent",
         content_padding=15,
-        expand=True,  # 填满父容器
+    )
+
+    # 预览容器 - 固定高度，内部用Column实现滚动
+    preview_container = ft.Container(
+        content=ft.Column([preview_text], scroll=ft.ScrollMode.AUTO, expand=True),
+        height=200,
     )
 
     question_input = ft.TextField(
         label="➕ 追加当前问题",
         multiline=True,
-        min_lines=3,
-        max_lines=6,
+        min_lines=5,
+        max_lines=20,
         hint_text=PLACEHOLDER_TEXT,
         shift_enter=True,
         on_change=lambda e: update_preview(),
     )
 
-    checkbox_list = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=5)
+    # 输入框容器 - 固定高度，内部用Column实现滚动
+    question_container = ft.Container(
+        content=ft.Column([question_input], scroll=ft.ScrollMode.AUTO, expand=True),
+        height=120,
+    )
+
+    checkbox_list = ft.Column(spacing=5)
 
     # ================= 核心逻辑 =================
 
@@ -91,7 +106,7 @@ def main(page: ft.Page):
             if t_id in templates:
                 data = templates[t_id]
                 header = f"\n\n{'=' * 20} [Context: {data['title']}] {'=' * 20}\n\n"
-                parts.append(header + data['content'])
+                parts.append(header + data["content"])
 
         question = get_real_question()
         if question:
@@ -120,9 +135,9 @@ def main(page: ft.Page):
         checkbox_list.controls.clear()
         for t_id, data in templates.items():
             cb = ft.Checkbox(
-                label=data['title'],
+                label=data["title"],
                 value=t_id in selected_ids,
-                on_change=lambda e, tid=t_id: on_checkbox_change(e, tid)
+                on_change=lambda e, tid=t_id: on_checkbox_change(e, tid),
             )
             checkbox_list.controls.append(cb)
         page.update()
@@ -137,15 +152,21 @@ def main(page: ft.Page):
 
         # 使用系统原生剪贴板命令
         try:
-            if platform.system() == 'Darwin':  # macOS
+            if platform.system() == "Darwin":  # macOS
                 # macOS 需要设置 LANG 环境变量来正确处理 UTF-8
                 env = os.environ.copy()
-                env['LANG'] = 'en_US.UTF-8'
-                subprocess.run(['pbcopy'], input=final_string.encode('utf-8'), check=True, env=env)
-            elif platform.system() == 'Windows':
-                subprocess.run(['clip'], input=final_string.encode('utf-8'), check=True)
+                env["LANG"] = "en_US.UTF-8"
+                subprocess.run(
+                    ["pbcopy"], input=final_string.encode("utf-8"), check=True, env=env
+                )
+            elif platform.system() == "Windows":
+                subprocess.run(["clip"], input=final_string.encode("utf-8"), check=True)
             else:  # Linux
-                subprocess.run(['xclip', '-selection', 'clipboard'], input=final_string.encode('utf-8'), check=True)
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=final_string.encode("utf-8"),
+                    check=True,
+                )
         except Exception as ex:
             page.snack_bar = ft.SnackBar(ft.Text(f"复制失败: {str(ex)}"))
             page.snack_bar.open = True
@@ -165,7 +186,9 @@ def main(page: ft.Page):
         if button.style:
             button.style.bgcolor = "green"
         else:
-            button.style = ft.ButtonStyle(bgcolor="green")  # 注意是 ButtonStyle 不是 ButtonStyle
+            button.style = ft.ButtonStyle(
+                bgcolor="green"
+            )  # 注意是 ButtonStyle 不是 ButtonStyle
 
         page.update()
 
@@ -184,8 +207,10 @@ def main(page: ft.Page):
         update_preview()
 
     def create_new_template(e):
-        title_field = ft.TextField(label="模板标题", expand=True)
-        content_field = ft.TextField(label="模板内容", multiline=True, min_lines=10, expand=True)
+        title_field = ft.TextField(label="模板标题", expand=True, dense=True)
+        content_field = ft.TextField(
+            label="模板内容", multiline=True, min_lines=10, expand=True, dense=True
+        )
 
         def save_dialog(e):
             if not title_field.value or not content_field.value:
@@ -195,7 +220,10 @@ def main(page: ft.Page):
                 return
 
             new_id = str(uuid.uuid4())[:8]
-            templates[new_id] = {"title": title_field.value, "content": content_field.value}
+            templates[new_id] = {
+                "title": title_field.value,
+                "content": content_field.value,
+            }
             save_data()
             refresh_sidebar()
             update_preview()
@@ -209,7 +237,7 @@ def main(page: ft.Page):
         dlg_modal = ft.AlertDialog(
             modal=True,
             title=ft.Text("新建模板"),
-            content=ft.Column([title_field, content_field], tight=True),
+            content=ft.Column([title_field, content_field], tight=True, spacing=5),
             actions=[
                 ft.TextButton("取消", on_click=lambda e: close_dlg(dlg_modal)),
                 ft.TextButton("保存", on_click=save_dialog),
@@ -228,67 +256,78 @@ def main(page: ft.Page):
     # ================= 布局组装 (最终修复版) =================
 
     sidebar = ft.Container(
-        content=ft.Column([
-            ft.Text("📚 模板库", size=20, weight=ft.FontWeight.BOLD),
-            ft.Button("+ 新建模板", on_click=create_new_template, icon="add"),
-            ft.Divider(),
-            checkbox_list
-        ], scroll=ft.ScrollMode.AUTO, expand=True),
+        content=ft.Column(
+            [
+                ft.Text("📚 模板库", size=20, weight=ft.FontWeight.BOLD),
+                ft.Button("+ 新建模板", on_click=create_new_template, icon="add"),
+                ft.Divider(),
+                checkbox_list,
+            ],
+            alignment=ft.MainAxisAlignment.START,
+            scroll=ft.ScrollMode.AUTO,
+        ),
         width=280,
         padding=15,
         border_radius=10,
-        expand=False
-    )
-
-    info_row = ft.Row([
-        ft.Text("💡 操作：勾选左侧模板 + 底部输入问题 -> 自动生成拼接内容", size=12, color="grey_400")
-    ])
-
-    input_section = ft.Column([
-        ft.Row([
-            ft.Text("➕ 追加当前问题:", weight=ft.FontWeight.BOLD, size=14),
-        ], alignment=ft.MainAxisAlignment.START),
-        question_input,
-        ft.Row([
-            ft.Button("🧹 清空选择", on_click=clear_all, icon="cleaning_services"),
-            ft.Container(expand=True),
-            btn_generate := ft.Button("⚡ 生成并复制全部内容", on_click=generate_and_copy, icon="content_copy",
-                                      height=50),
-        ], alignment=ft.MainAxisAlignment.END)
-    ], spacing=10)
-
-    # 【关键修复】
-    # 1. 创建一个 Column 专门用于包裹预览区
-    # 2. 设置 expand=True 让它占据剩余空间
-    # 3. 设置 scroll=Auto 让它内部滚动
-    preview_scroll_column = ft.Column(
-        controls=[preview_text],
         expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=0
     )
 
-    # 主布局 Column
-    # 结构：[Info] + [Scrollable Preview Column] + [Fixed Input Section]
+    info_row = ft.Row(
+        [
+            ft.Text(
+                "💡 操作：勾选左侧模板 + 底部输入问题 -> 自动生成拼接内容",
+                size=12,
+                color="grey_400",
+            )
+        ]
+    )
+
+    input_section = ft.Column(
+        [
+            ft.Row(
+                [
+                    ft.Text("➕ 追加当前问题:", weight=ft.FontWeight.BOLD, size=14),
+                ],
+                alignment=ft.MainAxisAlignment.START,
+            ),
+            question_container,
+            ft.Row(
+                [
+                    ft.Button(
+                        "🧹 清空选择", on_click=clear_all, icon="cleaning_services"
+                    ),
+                    ft.Container(expand=True),
+                    btn_generate := ft.Button(
+                        "⚡ 生成并复制全部内容",
+                        on_click=generate_and_copy,
+                        icon="content_copy",
+                        height=50,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.END,
+            ),
+        ],
+        spacing=10,
+    )
+
+    # 主布局 Column - 整体不滚动
     main_area = ft.Container(
         content=ft.Column(
             controls=[
                 info_row,
                 ft.Divider(height=10, color="transparent"),
-                preview_scroll_column,  # 可滚动的中间部分
+                preview_container,
                 ft.Divider(height=15, color="transparent"),
-                input_section  # 固定的底部部分
+                input_section,
             ],
             spacing=0,
-            # 父 Column 不需要 scroll，因为子元素 preview_scroll_column 已经处理了滚动
+            expand=True,
         ),
         expand=True,
-        padding=20
+        padding=20,
     )
 
-    page.add(
-        ft.Row([sidebar, main_area], expand=True, spacing=20)
-    )
+    page.add(ft.Row([sidebar, main_area], expand=True, spacing=20))
 
     refresh_sidebar()
     update_preview()
