@@ -229,7 +229,6 @@ def main(page: ft.Page):
     page.padding = 0
     page.window_width = 1400
     page.window_height = 800
-    page.scroll = ft.ScrollMode.HIDDEN
     # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
     if page.window:
         page.window.icon = "app.ico"
@@ -334,18 +333,14 @@ def main(page: ft.Page):
         update_preview()
 
     def render_file_tree():
-        """将 tree_nodes 渲染为控件列表"""
+        """将 tree_nodes 渲染为控件列表（简化版，与 test_layout 一致）"""
         file_tree_column.controls.clear()
         nodes = project_state["tree_nodes"]
 
         if not nodes:
             file_tree_column.controls.append(
-                ft.Container(
-                    ft.Text("点击上方 Open Project\n选择一个项目文件夹", 
-                            size=12, color="grey_500", text_align=ft.TextAlign.CENTER),
-                    alignment=ft.Alignment(0, 0),
-                    padding=20,
-                )
+                ft.Text("点击上方 Open Project\n选择一个项目文件夹",
+                        size=12, color="grey_500", text_align=ft.TextAlign.CENTER)
             )
             page.update()
             return
@@ -354,44 +349,39 @@ def main(page: ft.Page):
             if not is_node_visible(nodes, i):
                 continue
 
-            indent = node["depth"] * 16
-            
+            indent_str = "  " * node["depth"]
+
             if node["is_dir"]:
-                arrow_icon = "keyboard_arrow_down" if node["expanded"] else "keyboard_arrow_right"
-                row = ft.Row(
-                    [
-                        ft.Container(width=indent),
-                        ft.IconButton(
-                            icon=arrow_icon,
-                            icon_size=14,
-                            width=24, height=24,
-                            padding=0,
-                            on_click=lambda e, n=node: on_toggle_folder(n),
-                        ),
-                        ft.Icon("folder", size=16, color="amber"),
-                        ft.Text(node["name"], size=12, overflow=ft.TextOverflow.ELLIPSIS,
-                                tooltip=node["path"]),
-                    ],
-                    spacing=2,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                arrow = "▼" if node["expanded"] else "▶"
+                file_tree_column.controls.append(
+                    ft.Row(
+                        [
+                            ft.Container(width=node["depth"] * 16),
+                            ft.TextButton(
+                                content=ft.Text(f"{arrow} 📁 {node['name']}"),
+                                on_click=lambda e, n=node: on_toggle_folder(n),
+                                style=ft.ButtonStyle(padding=2),
+                            ),
+                        ],
+                        spacing=0,
+                    )
                 )
             else:
-                row = ft.Row(
-                    [
-                        ft.Container(width=indent + 24),  # 对齐到文件夹名称位置
-                        ft.Checkbox(
-                            label=node["name"],
-                            value=node["path"] in project_state["selected_files"],
-                            on_change=lambda e, p=node["path"]: on_file_checkbox_change(e, p),
-                            scale=0.8,
-                        ),
-                    ],
-                    spacing=2,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                file_tree_column.controls.append(
+                    ft.Row(
+                        [
+                            ft.Container(width=node["depth"] * 16 + 20),
+                            ft.Checkbox(
+                                label=node["name"],
+                                value=node["path"] in project_state["selected_files"],
+                                on_change=lambda e, p=node["path"]: on_file_checkbox_change(e, p),
+                                scale=0.8,
+                            ),
+                        ],
+                        spacing=0,
+                    )
                 )
-            
-            file_tree_column.controls.append(row)
-        
+
         page.update()
 
     def select_all_files(e):
@@ -419,10 +409,7 @@ def main(page: ft.Page):
             project_state["selected_files"].clear()
             project_state["tree_nodes"] = build_tree_nodes(result)
             render_file_tree()
-            update_preview()
-            page.snack_bar = ft.SnackBar(ft.Text(f"已打开项目: {os.path.basename(result)}"))
-            page.snack_bar.open = True
-            page.update()
+            # render_file_tree 已调用 page.update()，不再重复
 
     # ================= 核心逻辑 =================
 
@@ -701,18 +688,12 @@ def main(page: ft.Page):
         padding=15,
     )
 
-    # 三栏布局
+    # 三栏布局（与 test_layout.py 一致的模式）
     page.add(
         ft.Row(
-            [
-                sidebar,
-                ft.VerticalDivider(width=1),
-                tree_panel,
-                ft.VerticalDivider(width=1),
-                main_area,
-            ],
+            [sidebar, tree_panel, main_area],
             expand=True,
-            spacing=0,
+            spacing=2,
         )
     )
 
