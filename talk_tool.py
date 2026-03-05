@@ -13,20 +13,60 @@ PLACEHOLDER_TEXT = "在此输入你具体要问的问题，它会自动附加在
 
 # 默认忽略的目录和文件
 DEFAULT_IGNORE_PATTERNS = {
-    "__pycache__", ".git", ".svn", ".hg", "node_modules", ".venv", "venv",
-    ".idea", ".vscode", ".DS_Store", "*.pyc", "*.pyo", ".env", "dist", "build",
-    "__MACOSX", ".pytest_cache", ".mypy_cache", ".tox", "*.egg-info"
+    "__pycache__",
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".idea",
+    ".vscode",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
+    ".env",
+    "dist",
+    "build",
+    "__MACOSX",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    "*.egg-info",
 }
 
 # 扩展名到语言的映射
 EXT_LANG_MAP = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "tsx",
-    ".jsx": "jsx", ".vue": "vue", ".html": "html", ".css": "css", ".scss": "scss",
-    ".json": "json", ".yaml": "yaml", ".yml": "yaml", ".toml": "toml",
-    ".md": "markdown", ".sh": "bash", ".bash": "bash", ".zsh": "bash",
-    ".sql": "sql", ".java": "java", ".go": "go", ".rs": "rust", ".rb": "ruby",
-    ".swift": "swift", ".kt": "kotlin", ".xml": "xml", ".c": "c", ".cpp": "cpp",
-    ".h": "c", ".hpp": "cpp", ".txt": "text",
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".jsx": "jsx",
+    ".vue": "vue",
+    ".html": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".md": "markdown",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".sql": "sql",
+    ".java": "java",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".xml": "xml",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".txt": "text",
 }
 
 
@@ -43,22 +83,24 @@ def _should_ignore_entry(entry, ignore_patterns):
     return False
 
 
-def generate_tree_structure(root_path: str, prefix: str = "", ignore_patterns: set = None) -> str:
+def generate_tree_structure(
+    root_path: str, prefix: str = "", ignore_patterns: set = None
+) -> str:
     """递归生成目录树结构字符串"""
     if ignore_patterns is None:
         ignore_patterns = DEFAULT_IGNORE_PATTERNS
-    
+
     result = []
     root_name = os.path.basename(root_path) or root_path
-    
+
     if not prefix:  # 根目录
         result.append(f"{root_name}/")
-    
+
     try:
         entries = sorted(os.listdir(root_path))
     except PermissionError:
         return f"{prefix}[权限不足]\n"
-    
+
     # 过滤掉忽略的文件和目录
     filtered_entries = []
     for entry in entries:
@@ -76,38 +118,36 @@ def generate_tree_structure(root_path: str, prefix: str = "", ignore_patterns: s
                 break
         if not should_ignore:
             filtered_entries.append(entry)
-    
+
     entries = filtered_entries
     dirs = []
     files = []
-    
+
     for entry in entries:
         full_path = os.path.join(root_path, entry)
         if os.path.isdir(full_path):
             dirs.append(entry)
         else:
             files.append(entry)
-    
+
     # 合并目录和文件，目录在前
     all_items = [(d, True) for d in dirs] + [(f, False) for f in files]
-    
+
     for i, (item, is_dir) in enumerate(all_items):
-        is_last = (i == len(all_items) - 1)
+        is_last = i == len(all_items) - 1
         connector = "└── " if is_last else "├── "
-        
+
         if is_dir:
             result.append(f"{prefix}{connector}{item}/")
             new_prefix = prefix + ("    " if is_last else "│   ")
             subtree = generate_tree_structure(
-                os.path.join(root_path, item), 
-                new_prefix, 
-                ignore_patterns
+                os.path.join(root_path, item), new_prefix, ignore_patterns
             )
             if subtree:
                 result.append(subtree)
         else:
             result.append(f"{prefix}{connector}{item}")
-    
+
     return "\n".join(result)
 
 
@@ -115,13 +155,13 @@ def build_tree_nodes(root_path, depth=0, ignore_patterns=None):
     """递归构建扁平化的文件树节点列表"""
     if ignore_patterns is None:
         ignore_patterns = DEFAULT_IGNORE_PATTERNS
-    
+
     nodes = []
     try:
         entries = sorted(os.listdir(root_path))
     except PermissionError:
         return nodes
-    
+
     dirs = []
     files = []
     for entry in entries:
@@ -132,7 +172,7 @@ def build_tree_nodes(root_path, depth=0, ignore_patterns=None):
             dirs.append(entry)
         else:
             files.append(entry)
-    
+
     # 目录在前，文件在后
     for d in dirs:
         full_path = os.path.join(root_path, d)
@@ -148,17 +188,19 @@ def build_tree_nodes(root_path, depth=0, ignore_patterns=None):
         children = build_tree_nodes(full_path, depth + 1, ignore_patterns)
         node["_children_count"] = len(children)
         nodes.extend(children)
-    
+
     for f in files:
         full_path = os.path.join(root_path, f)
-        nodes.append({
-            "path": full_path,
-            "name": f,
-            "is_dir": False,
-            "depth": depth,
-            "expanded": False,
-        })
-    
+        nodes.append(
+            {
+                "path": full_path,
+                "name": f,
+                "is_dir": False,
+                "depth": depth,
+                "expanded": False,
+            }
+        )
+
     return nodes
 
 
@@ -190,9 +232,14 @@ def pick_directory_native(title="选择文件夹"):
         if system == "Darwin":
             # macOS: 使用 osascript 调用原生文件夹选择器
             result = subprocess.run(
-                ["osascript", "-e",
-                 f'POSIX path of (choose folder with prompt "{title}")'],
-                capture_output=True, text=True, timeout=120
+                [
+                    "osascript",
+                    "-e",
+                    f'POSIX path of (choose folder with prompt "{title}")',
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -206,7 +253,9 @@ def pick_directory_native(title="选择文件夹"):
             )
             result = subprocess.run(
                 ["powershell", "-Command", ps_script],
-                capture_output=True, text=True, timeout=120
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
@@ -214,7 +263,9 @@ def pick_directory_native(title="选择文件夹"):
             # Linux: 使用 zenity
             result = subprocess.run(
                 ["zenity", "--file-selection", "--directory", f"--title={title}"],
-                capture_output=True, text=True, timeout=120
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -235,7 +286,12 @@ def main(page: ft.Page):
 
     templates = {}
     selected_ids = set()
-    project_state = {"path": None, "tree_nodes": [], "selected_files": set()}
+    project_state = {
+        "path": None,
+        "tree_nodes": [],
+        "selected_files": set(),
+        "selected_files_lines": {},
+    }
 
     def load_data():
         if not os.path.exists(DATA_FILE):
@@ -278,11 +334,12 @@ def main(page: ft.Page):
         border_color="transparent",
         focused_border_color="transparent",
         content_padding=15,
+        expand=True,
     )
 
     preview_container = ft.Container(
         content=ft.Column([preview_text], scroll=ft.ScrollMode.AUTO, expand=True),
-        height=200,
+        expand=True,
     )
 
     question_input = ft.TextField(
@@ -293,11 +350,12 @@ def main(page: ft.Page):
         hint_text=PLACEHOLDER_TEXT,
         shift_enter=True,
         on_change=lambda e: update_preview(),
+        expand=True,
     )
 
     question_container = ft.Container(
         content=ft.Column([question_input], scroll=ft.ScrollMode.AUTO, expand=True),
-        height=120,
+        expand=True,
     )
 
     checkbox_list = ft.Column(spacing=5)
@@ -339,8 +397,12 @@ def main(page: ft.Page):
 
         if not nodes:
             file_tree_column.controls.append(
-                ft.Text("点击上方 Open Project\n选择一个项目文件夹",
-                        size=12, color="grey_500", text_align=ft.TextAlign.CENTER)
+                ft.Text(
+                    "点击上方 Open Project\n选择一个项目文件夹",
+                    size=12,
+                    color="grey_500",
+                    text_align=ft.TextAlign.CENTER,
+                )
             )
             page.update()
             return
@@ -374,7 +436,9 @@ def main(page: ft.Page):
                             ft.Checkbox(
                                 label=node["name"],
                                 value=node["path"] in project_state["selected_files"],
-                                on_change=lambda e, p=node["path"]: on_file_checkbox_change(e, p),
+                                on_change=lambda e, p=node["path"]: (
+                                    on_file_checkbox_change(e, p)
+                                ),
                                 scale=0.8,
                             ),
                         ],
@@ -449,7 +513,9 @@ def main(page: ft.Page):
     def update_preview(e=None):
         result = build_content_string()
         if not result:
-            preview_text.value = "(等待操作：请勾选左侧模板 / 打开项目选择文件 / 在底部输入问题)"
+            preview_text.value = (
+                "(等待操作：请勾选左侧模板 / 打开项目选择文件 / 在底部输入问题)"
+            )
         else:
             preview_text.value = result
         page.update()
@@ -618,8 +684,12 @@ def main(page: ft.Page):
                 ft.Divider(),
                 ft.Row(
                     [
-                        ft.TextButton("全选", on_click=select_all_files, icon="select_all"),
-                        ft.TextButton("取消全选", on_click=deselect_all_files, icon="deselect"),
+                        ft.TextButton(
+                            "全选", on_click=select_all_files, icon="select_all"
+                        ),
+                        ft.TextButton(
+                            "取消全选", on_click=deselect_all_files, icon="deselect"
+                        ),
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     spacing=5,
@@ -652,7 +722,11 @@ def main(page: ft.Page):
                 ],
                 alignment=ft.MainAxisAlignment.START,
             ),
-            question_container,
+            ft.Container(
+                content=question_container,
+                expand=True,
+                height=100,
+            ),
             ft.Row(
                 [
                     ft.Button(
@@ -670,6 +744,7 @@ def main(page: ft.Page):
             ),
         ],
         spacing=10,
+        expand=True,
     )
 
     main_area = ft.Container(
@@ -677,7 +752,7 @@ def main(page: ft.Page):
             controls=[
                 info_row,
                 ft.Divider(height=10, color="transparent"),
-                preview_container,
+                ft.Container(content=preview_container, expand=2),
                 ft.Divider(height=15, color="transparent"),
                 input_section,
             ],
