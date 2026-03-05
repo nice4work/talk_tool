@@ -5,7 +5,6 @@ import uuid
 import asyncio
 import subprocess
 import platform
-from tkinter import Tk, filedialog
 
 from wcwidth import width
 
@@ -18,6 +17,30 @@ DEFAULT_IGNORE_PATTERNS = {
     ".idea", ".vscode", ".DS_Store", "*.pyc", "*.pyo", ".env", "dist", "build",
     "__MACOSX", ".pytest_cache", ".mypy_cache", ".tox", "*.egg-info"
 }
+
+# 扩展名到语言的映射
+EXT_LANG_MAP = {
+    ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "tsx",
+    ".jsx": "jsx", ".vue": "vue", ".html": "html", ".css": "css", ".scss": "scss",
+    ".json": "json", ".yaml": "yaml", ".yml": "yaml", ".toml": "toml",
+    ".md": "markdown", ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    ".sql": "sql", ".java": "java", ".go": "go", ".rs": "rust", ".rb": "ruby",
+    ".swift": "swift", ".kt": "kotlin", ".xml": "xml", ".c": "c", ".cpp": "cpp",
+    ".h": "c", ".hpp": "cpp", ".txt": "text",
+}
+
+
+def _should_ignore_entry(entry, ignore_patterns):
+    """判断一个文件/目录名是否应被忽略"""
+    if entry.startswith("."):
+        return True
+    for pattern in ignore_patterns:
+        if pattern.startswith("*"):
+            if entry.endswith(pattern[1:]):
+                return True
+        elif entry == pattern:
+            return True
+    return False
 
 
 def generate_tree_structure(root_path: str, prefix: str = "", ignore_patterns: set = None) -> str:
@@ -88,11 +111,123 @@ def generate_tree_structure(root_path: str, prefix: str = "", ignore_patterns: s
     return "\n".join(result)
 
 
+def build_tree_nodes(root_path, depth=0, ignore_patterns=None):
+    """递归构建扁平化的文件树节点列表"""
+    if ignore_patterns is None:
+        ignore_patterns = DEFAULT_IGNORE_PATTERNS
+    
+    nodes = []
+    try:
+        entries = sorted(os.listdir(root_path))
+    except PermissionError:
+        return nodes
+    
+    dirs = []
+    files = []
+    for entry in entries:
+        if _should_ignore_entry(entry, ignore_patterns):
+            continue
+        full_path = os.path.join(root_path, entry)
+        if os.path.isdir(full_path):
+            dirs.append(entry)
+        else:
+            files.append(entry)
+    
+    # 目录在前，文件在后
+    for d in dirs:
+        full_path = os.path.join(root_path, d)
+        node = {
+            "path": full_path,
+            "name": d,
+            "is_dir": True,
+            "depth": depth,
+            "expanded": depth == 0,  # 根目录直接子项默认展开
+        }
+        nodes.append(node)
+        # 递归构建子节点
+        children = build_tree_nodes(full_path, depth + 1, ignore_patterns)
+        node["_children_count"] = len(children)
+        nodes.extend(children)
+    
+    for f in files:
+        full_path = os.path.join(root_path, f)
+        nodes.append({
+            "path": full_path,
+            "name": f,
+            "is_dir": False,
+            "depth": depth,
+            "expanded": False,
+        })
+    
+    return nodes
+
+
+def read_file_content(file_path):
+    """读取文件内容，处理编码错误"""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(file_path, "r", encoding="gbk") as f:
+                return f.read()
+        except Exception:
+            return "[无法读取: 二进制或编码不支持]"
+    except Exception as ex:
+        return f"[无法读取: {ex}]"
+
+
+def get_lang_from_ext(file_path):
+    """根据文件扩展名推断语言"""
+    _, ext = os.path.splitext(file_path)
+    return EXT_LANG_MAP.get(ext.lower(), "")
+
+
+def pick_directory_native(title="选择文件夹"):
+    """使用系统原生方式选择文件夹，避免 tkinter 与 Flet 冲突"""
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            # macOS: 使用 osascript 调用原生文件夹选择器
+            result = subprocess.run(
+                ["osascript", "-e",
+                 f'POSIX path of (choose folder with prompt "{title}")'],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        elif system == "Windows":
+            # Windows: 使用 PowerShell 的 FolderBrowserDialog
+            ps_script = (
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; "
+                "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                f"$f.Description = '{title}'; "
+                "if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"
+            )
+            result = subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        else:
+            # Linux: 使用 zenity
+            result = subprocess.run(
+                ["zenity", "--file-selection", "--directory", f"--title={title}"],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def main(page: ft.Page):
     page.title = "ContextFlow Pro (Flet 版)"
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 10
-    page.window_width = 1200
+    page.padding = 0
+    page.window_width = 1400
     page.window_height = 800
     page.scroll = ft.ScrollMode.HIDDEN
     # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
@@ -101,7 +236,7 @@ def main(page: ft.Page):
 
     templates = {}
     selected_ids = set()
-    project_structure_info = {"path": None, "content": None}  # 存储项目结构信息
+    project_state = {"path": None, "tree_nodes": [], "selected_files": set()}
 
     def load_data():
         if not os.path.exists(DATA_FILE):
@@ -116,11 +251,9 @@ def main(page: ft.Page):
                 },
             }
         try:
-            # 尝试使用 UTF-8 编码读取
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except UnicodeDecodeError:
-            # 回退到其他编码
             try:
                 with open(DATA_FILE, "r", encoding="gbk") as f:
                     return json.load(f)
@@ -130,7 +263,6 @@ def main(page: ft.Page):
             return {}
 
     def save_data():
-        # 确保使用 UTF-8 编码保存，并且禁用 ensure_ascii 以正确处理中文
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(templates, f, ensure_ascii=False, indent=2)
 
@@ -149,7 +281,6 @@ def main(page: ft.Page):
         content_padding=15,
     )
 
-    # 预览容器 - 固定高度，内部用Column实现滚动
     preview_container = ft.Container(
         content=ft.Column([preview_text], scroll=ft.ScrollMode.AUTO, expand=True),
         height=200,
@@ -165,29 +296,131 @@ def main(page: ft.Page):
         on_change=lambda e: update_preview(),
     )
 
-    # 输入框容器 - 固定高度，内部用Column实现滚动
     question_container = ft.Container(
         content=ft.Column([question_input], scroll=ft.ScrollMode.AUTO, expand=True),
-        height=120,width=400
+        height=120,
     )
 
     checkbox_list = ft.Column(spacing=5)
+    file_tree_column = ft.Column(spacing=2)
 
-    # 使用 tkinter 文件夹选择器
-    def pick_project_folder(e):
-        # 隐藏 tkinter 主窗口
-        root = Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
+    # ================= 文件树相关逻辑 =================
+
+    def is_node_visible(nodes, index):
+        """判断节点是否应该可见（所有父节点都展开）"""
+        node = nodes[index]
+        if node["depth"] == 0:
+            return True
+        # 向上找父节点
+        target_depth = node["depth"] - 1
+        for j in range(index - 1, -1, -1):
+            if nodes[j]["depth"] == target_depth and nodes[j]["is_dir"]:
+                if not nodes[j]["expanded"]:
+                    return False
+                return is_node_visible(nodes, j)
+        return True
+
+    def on_toggle_folder(node):
+        """折叠/展开文件夹"""
+        node["expanded"] = not node["expanded"]
+        render_file_tree()
+
+    def on_file_checkbox_change(e, file_path):
+        """文件勾选/取消回调"""
+        if e.control.value:
+            project_state["selected_files"].add(file_path)
+        else:
+            project_state["selected_files"].discard(file_path)
+        update_preview()
+
+    def render_file_tree():
+        """将 tree_nodes 渲染为控件列表"""
+        file_tree_column.controls.clear()
+        nodes = project_state["tree_nodes"]
+
+        if not nodes:
+            file_tree_column.controls.append(
+                ft.Container(
+                    ft.Text("点击上方 Open Project\n选择一个项目文件夹", 
+                            size=12, color="grey_500", text_align=ft.TextAlign.CENTER),
+                    alignment=ft.Alignment(0, 0),
+                    padding=20,
+                )
+            )
+            page.update()
+            return
+
+        for i, node in enumerate(nodes):
+            if not is_node_visible(nodes, i):
+                continue
+
+            indent = node["depth"] * 16
+            
+            if node["is_dir"]:
+                arrow_icon = "keyboard_arrow_down" if node["expanded"] else "keyboard_arrow_right"
+                row = ft.Row(
+                    [
+                        ft.Container(width=indent),
+                        ft.IconButton(
+                            icon=arrow_icon,
+                            icon_size=14,
+                            width=24, height=24,
+                            padding=0,
+                            on_click=lambda e, n=node: on_toggle_folder(n),
+                        ),
+                        ft.Icon("folder", size=16, color="amber"),
+                        ft.Text(node["name"], size=12, overflow=ft.TextOverflow.ELLIPSIS,
+                                tooltip=node["path"]),
+                    ],
+                    spacing=2,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            else:
+                row = ft.Row(
+                    [
+                        ft.Container(width=indent + 24),  # 对齐到文件夹名称位置
+                        ft.Checkbox(
+                            label=node["name"],
+                            value=node["path"] in project_state["selected_files"],
+                            on_change=lambda e, p=node["path"]: on_file_checkbox_change(e, p),
+                            scale=0.8,
+                        ),
+                    ],
+                    spacing=2,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            
+            file_tree_column.controls.append(row)
         
-        result = filedialog.askdirectory(title="选择项目文件夹")
-        root.destroy()
-        
+        page.update()
+
+    def select_all_files(e):
+        """全选所有可见文件"""
+        for node in project_state["tree_nodes"]:
+            if not node["is_dir"]:
+                project_state["selected_files"].add(node["path"])
+        render_file_tree()
+        update_preview()
+
+    def deselect_all_files(e):
+        """取消全选"""
+        project_state["selected_files"].clear()
+        render_file_tree()
+        update_preview()
+
+    # ================= 项目打开逻辑 =================
+
+    def open_project(e):
+        """打开项目文件夹"""
+        result = pick_directory_native("选择项目文件夹")
+
         if result:
-            project_structure_info["path"] = result
-            project_structure_info["content"] = generate_tree_structure(result)
+            project_state["path"] = result
+            project_state["selected_files"].clear()
+            project_state["tree_nodes"] = build_tree_nodes(result)
+            render_file_tree()
             update_preview()
-            page.snack_bar = ft.SnackBar(ft.Text(f"已添加项目结构: {os.path.basename(result)}"))
+            page.snack_bar = ft.SnackBar(ft.Text(f"已打开项目: {os.path.basename(result)}"))
             page.snack_bar.open = True
             page.update()
 
@@ -205,11 +438,19 @@ def main(page: ft.Page):
                 header = f"\n\n{'=' * 20} [Context: {data['title']}] {'=' * 20}\n\n"
                 parts.append(header + data["content"])
 
-        # 添加项目结构信息
-        if project_structure_info["content"]:
-            folder_name = os.path.basename(project_structure_info["path"]) if project_structure_info["path"] else "项目"
-            header = f"\n\n{'=' * 20} [Project Structure: {folder_name}] {'=' * 20}\n\n"
-            parts.append(header + "```\n" + project_structure_info["content"] + "\n```")
+        # 添加选中文件的内容
+        if project_state["selected_files"]:
+            root_path = project_state["path"] or ""
+            for fpath in sorted(project_state["selected_files"]):
+                # 计算相对路径
+                try:
+                    rel_path = os.path.relpath(fpath, root_path)
+                except ValueError:
+                    rel_path = fpath
+                lang = get_lang_from_ext(fpath)
+                content = read_file_content(fpath)
+                header = f"\n\n{'=' * 20} [File: {rel_path}] {'=' * 20}\n\n"
+                parts.append(header + f"```{lang}\n{content}\n```")
 
         question = get_real_question()
         if question:
@@ -221,7 +462,7 @@ def main(page: ft.Page):
     def update_preview(e=None):
         result = build_content_string()
         if not result:
-            preview_text.value = "(等待操作：请勾选左侧模板 / 追加项目结构 / 在底部输入问题)"
+            preview_text.value = "(等待操作：请勾选左侧模板 / 打开项目选择文件 / 在底部输入问题)"
         else:
             preview_text.value = result
         page.update()
@@ -253,10 +494,8 @@ def main(page: ft.Page):
             page.update()
             return
 
-        # 使用系统原生剪贴板命令
         try:
-            if platform.system() == "Darwin":  # macOS
-                # macOS 需要设置 LANG 环境变量来正确处理 UTF-8
+            if platform.system() == "Darwin":
                 env = os.environ.copy()
                 env["LANG"] = "en_US.UTF-8"
                 subprocess.run(
@@ -264,7 +503,7 @@ def main(page: ft.Page):
                 )
             elif platform.system() == "Windows":
                 subprocess.run(["clip"], input=final_string.encode("utf-8"), check=True)
-            else:  # Linux
+            else:
                 subprocess.run(
                     ["xclip", "-selection", "clipboard"],
                     input=final_string.encode("utf-8"),
@@ -276,28 +515,21 @@ def main(page: ft.Page):
             page.update()
             return
 
-        # 3. 更新按钮 UI (成功分支)
         button = e.control
         original_content = button.content
-        # 保存原始样式对象引用，避免丢失
         original_bgcolor = None
         if button.style:
             original_bgcolor = button.style.bgcolor
 
-        # 修改按钮状态
         button.content = f"✅ 已复制 ({len(final_string)} 字符)"
         if button.style:
             button.style.bgcolor = "green"
         else:
-            button.style = ft.ButtonStyle(
-                bgcolor="green"
-            )  # 注意是 ButtonStyle 不是 ButtonStyle
+            button.style = ft.ButtonStyle(bgcolor="green")
 
         page.update()
-
         await asyncio.sleep(2)
 
-        # 恢复按钮状态
         button.content = original_content
         if button.style:
             button.style.bgcolor = original_bgcolor
@@ -306,8 +538,10 @@ def main(page: ft.Page):
     def clear_all(e):
         selected_ids.clear()
         question_input.value = ""
-        project_structure_info["path"] = None
-        project_structure_info["content"] = None
+        project_state["path"] = None
+        project_state["tree_nodes"] = []
+        project_state["selected_files"].clear()
+        render_file_tree()
         refresh_sidebar()
         update_preview()
 
@@ -358,12 +592,23 @@ def main(page: ft.Page):
         dlg_modal.open = True
         page.update()
 
-    # ================= 布局组装 (最终修复版) =================
+    # ================= 布局组装 =================
 
+    # AppBar
+    page.appbar = ft.AppBar(
+        title=ft.Text("ContextFlow Pro", size=18, weight=ft.FontWeight.BOLD),
+        center_title=False,
+        actions=[
+            ft.Button("📁 Open Project", on_click=open_project, icon="folder_open"),
+            ft.Container(width=10),
+        ],
+    )
+
+    # 左栏 - 模板库
     sidebar = ft.Container(
         content=ft.Column(
             [
-                ft.Text("📚 模板库", size=20, weight=ft.FontWeight.BOLD),
+                ft.Text("📚 模板库", size=18, weight=ft.FontWeight.BOLD),
                 ft.Button("+ 新建模板", on_click=create_new_template, icon="add"),
                 ft.Divider(),
                 checkbox_list,
@@ -371,16 +616,41 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.START,
             scroll=ft.ScrollMode.AUTO,
         ),
-        width=280,
-        padding=15,
+        padding=10,
         border_radius=10,
-        expand=True,
+        expand=1,  # flex factor 1
     )
 
+    # 中间栏 - 项目文件树 (scroll 放在外层 Column 上，file_tree_column 直接作为子项)
+    tree_panel = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("📂 项目文件", size=18, weight=ft.FontWeight.BOLD),
+                ft.Divider(),
+                file_tree_column,
+                ft.Divider(),
+                ft.Row(
+                    [
+                        ft.TextButton("全选", on_click=select_all_files, icon="select_all"),
+                        ft.TextButton("取消全选", on_click=deselect_all_files, icon="deselect"),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=5,
+                ),
+            ],
+            spacing=5,
+            scroll=ft.ScrollMode.AUTO,
+        ),
+        padding=10,
+        border_radius=10,
+        expand=2,
+    )
+
+    # 右栏 - 预览 + 输入
     info_row = ft.Row(
         [
             ft.Text(
-                "💡 操作：勾选左侧模板 + 追加项目结构 + 底部输入问题 -> 自动生成拼接内容",
+                "💡 勾选左侧模板 + 中间文件 + 底部问题 → 生成拼接内容",
                 size=12,
                 color="grey_400",
             )
@@ -401,11 +671,6 @@ def main(page: ft.Page):
                     ft.Button(
                         "🧹 清空选择", on_click=clear_all, icon="cleaning_services"
                     ),
-                    ft.Button(
-                        "📁 追加项目结构",
-                        on_click=pick_project_folder,
-                        icon="folder_open",
-                    ),
                     ft.Container(expand=True),
                     btn_generate := ft.Button(
                         "⚡ 生成并复制全部内容",
@@ -420,7 +685,6 @@ def main(page: ft.Page):
         spacing=10,
     )
 
-    # 主布局 Column - 整体不滚动
     main_area = ft.Container(
         content=ft.Column(
             controls=[
@@ -433,13 +697,27 @@ def main(page: ft.Page):
             spacing=0,
             expand=True,
         ),
-        expand=True,
-        padding=20,
+        expand=3,  # flex factor 3
+        padding=15,
     )
 
-    page.add(ft.Row([sidebar, main_area], expand=True, spacing=20))
+    # 三栏布局
+    page.add(
+        ft.Row(
+            [
+                sidebar,
+                ft.VerticalDivider(width=1),
+                tree_panel,
+                ft.VerticalDivider(width=1),
+                main_area,
+            ],
+            expand=True,
+            spacing=0,
+        )
+    )
 
     refresh_sidebar()
+    render_file_tree()
     update_preview()
 
 
