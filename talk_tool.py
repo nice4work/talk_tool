@@ -361,6 +361,9 @@ def main(page: ft.Page):
     checkbox_list = ft.Column(spacing=5)
     file_tree_column = ft.Column(spacing=2)
 
+    # 选中文件的详细视图
+    selected_files_view = ft.Column(spacing=10, expand=True)
+
     # ================= 文件树相关逻辑 =================
 
     def is_node_visible(nodes, index):
@@ -388,7 +391,148 @@ def main(page: ft.Page):
             project_state["selected_files"].add(file_path)
         else:
             project_state["selected_files"].discard(file_path)
+            if file_path in project_state["selected_files_lines"]:
+                del project_state["selected_files_lines"][file_path]
         update_preview()
+        render_selected_files_view()
+
+    def select_file_preview(file_path):
+        """双击文件时选中并显示预览"""
+        if file_path not in project_state["selected_files"]:
+            project_state["selected_files"].add(file_path)
+            render_file_tree()
+        render_selected_files_view()
+
+    def render_selected_files_view():
+        """渲染已选中文件的详细内容视图"""
+        selected_files_view.controls.clear()
+
+        if not project_state["selected_files"]:
+            selected_files_view.controls.append(
+                ft.Text(
+                    "双击文件或勾选文件后查看内容",
+                    size=12,
+                    color="grey_500",
+                    text_align=ft.TextAlign.CENTER,
+                )
+            )
+        else:
+            for fpath in sorted(project_state["selected_files"]):
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                except:
+                    try:
+                        with open(fpath, "r", encoding="gbk") as f:
+                            lines = f.readlines()
+                    except:
+                        lines = []
+
+                lang = get_lang_from_ext(fpath)
+
+                # 计算相对路径
+                try:
+                    rel_path = os.path.relpath(fpath, project_state["path"] or "")
+                except:
+                    rel_path = fpath
+
+                lines_text = ft.Text(
+                    "".join(lines),
+                    selectable=True,
+                    font_family="monospace",
+                    size=12,
+                )
+
+                file_section = ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(
+                                        f"📋 {rel_path}",
+                                        weight=ft.FontWeight.BOLD,
+                                        size=14,
+                                    ),
+                                    ft.IconButton(
+                                        icon="close",
+                                        icon_size=16,
+                                        on_click=lambda e, p=fpath: (
+                                            project_state["selected_files"].discard(p),
+                                            project_state[
+                                                "selected_files_lines"
+                                            ].discard(p)
+                                            if hasattr(
+                                                project_state["selected_files_lines"],
+                                                "discard",
+                                            )
+                                            else project_state[
+                                                "selected_files_lines"
+                                            ].pop(p, None),
+                                            render_file_tree(),
+                                            render_selected_files_view(),
+                                            update_preview(),
+                                        ),
+                                        tooltip="移除文件",
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Container(
+                                content=ft.Row(
+                                    [
+                                        ft.Container(
+                                            content=ft.Column(
+                                                [lines_text],
+                                                scroll=ft.ScrollMode.AUTO,
+                                                height=200,
+                                                width=600,
+                                            ),
+                                            border=ft.border.all(1, "grey_700"),
+                                            border_radius=5,
+                                        ),
+                                    ],
+                                ),
+                                padding=10,
+                                bgcolor="grey_900",
+                                border_radius=5,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Text(
+                                        "选择行范围 (可选):", size=12, color="grey_400"
+                                    ),
+                                    ft.TextField(
+                                        label="起始行",
+                                        width=80,
+                                        dense=True,
+                                        hint_text="1",
+                                    ),
+                                    ft.Text("-", size=12),
+                                    ft.TextField(
+                                        label="结束行",
+                                        width=80,
+                                        dense=True,
+                                        hint_text=f"{len(lines)}",
+                                    ),
+                                    ft.TextButton(
+                                        "应用范围",
+                                        on_click=lambda e, p=fpath, lines=lines: (
+                                            apply_line_range(p, lines)
+                                        ),
+                                    ),
+                                ],
+                                spacing=5,
+                            ),
+                        ],
+                        spacing=5,
+                    ),
+                    border=ft.border.all(1, "grey_700"),
+                    border_radius=5,
+                    padding=10,
+                )
+                selected_files_view.controls.append(file_section)
+
+        page.update()
 
     def render_file_tree():
         """将 tree_nodes 渲染为控件列表（简化版，与 test_layout 一致）"""
@@ -429,20 +573,28 @@ def main(page: ft.Page):
                     )
                 )
             else:
+
+                def on_file_double_tap(e, p=node["path"]):
+                    select_file_preview(p)
+
                 file_tree_column.controls.append(
-                    ft.Row(
-                        [
-                            ft.Container(width=node["depth"] * 16 + 20),
-                            ft.Checkbox(
-                                label=node["name"],
-                                value=node["path"] in project_state["selected_files"],
-                                on_change=lambda e, p=node["path"]: (
-                                    on_file_checkbox_change(e, p)
+                    ft.GestureDetector(
+                        content=ft.Row(
+                            [
+                                ft.Container(width=node["depth"] * 16 + 20),
+                                ft.Checkbox(
+                                    label=node["name"],
+                                    value=node["path"]
+                                    in project_state["selected_files"],
+                                    on_change=lambda e, p=node["path"]: (
+                                        on_file_checkbox_change(e, p)
+                                    ),
+                                    scale=0.8,
                                 ),
-                                scale=0.8,
-                            ),
-                        ],
-                        spacing=0,
+                            ],
+                            spacing=0,
+                        ),
+                        on_tap=lambda e, p=node["path"]: select_file_preview(p),
                     )
                 )
 
@@ -498,8 +650,28 @@ def main(page: ft.Page):
                     rel_path = os.path.relpath(fpath, root_path)
                 except ValueError:
                     rel_path = fpath
+
+                # 读取文件内容
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        all_lines = f.readlines()
+                except:
+                    try:
+                        with open(fpath, "r", encoding="gbk") as f:
+                            all_lines = f.readlines()
+                    except:
+                        all_lines = []
+
+                # 检查是否有行范围选择
+                lines = all_lines
+                if fpath in project_state["selected_files_lines"]:
+                    line_range = project_state["selected_files_lines"][fpath]
+                    start_line = line_range.get("start", 1) - 1
+                    end_line = line_range.get("end", len(all_lines))
+                    lines = all_lines[start_line:end_line]
+
+                content = "".join(lines)
                 lang = get_lang_from_ext(fpath)
-                content = read_file_content(fpath)
                 header = f"\n\n{'=' * 20} [File: {rel_path}] {'=' * 20}\n\n"
                 parts.append(header + f"```{lang}\n{content}\n```")
 
@@ -509,6 +681,15 @@ def main(page: ft.Page):
             parts.append(header + question)
 
         return "".join(parts).lstrip() if parts else ""
+
+    def apply_line_range(file_path, all_lines):
+        """应用行范围选择"""
+        if file_path not in project_state["selected_files"]:
+            return
+
+        # 从UI获取行范围（简化实现）
+        # 实际应该从TextField获取，这里仅作示例
+        pass
 
     def update_preview(e=None):
         result = build_content_string()
@@ -693,6 +874,15 @@ def main(page: ft.Page):
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     spacing=5,
+                ),
+                ft.Divider(),
+                ft.Container(
+                    content=selected_files_view,
+                    expand=True,
+                    height=300,
+                    border=ft.border.all(1, "grey_700"),
+                    border_radius=5,
+                    padding=10,
                 ),
             ],
             spacing=5,
