@@ -433,7 +433,7 @@ def main(page: ft.Page):
             print(f"[DEBUG] File path: {file_path}")
             print(f"[DEBUG] Selected content length: {len(selected_content)}")
             print(f"[DEBUG] First 50 chars: {selected_content[:50]}...")
-            
+
             project_state["selected_files_content"][file_path] = selected_content
             print(f"[DEBUG] Content saved to project_state")
 
@@ -508,7 +508,9 @@ def main(page: ft.Page):
                     rel_path = fpath
 
                 # 获取用户选择的内容，如果没有选择则显示提示
-                selected_content = project_state["selected_files_content"].get(fpath, "")
+                selected_content = project_state["selected_files_content"].get(
+                    fpath, ""
+                )
                 if not selected_content:
                     display_text = "双击文件选择内容"
                 else:
@@ -536,7 +538,9 @@ def main(page: ft.Page):
                                         icon_size=16,
                                         on_click=lambda e, p=fpath: (
                                             project_state["selected_files"].discard(p),
-                                            project_state["selected_files_content"].pop(p, None),
+                                            project_state["selected_files_content"].pop(
+                                                p, None
+                                            ),
                                             render_file_tree(),
                                             render_selected_files_view(),
                                             update_preview(),
@@ -569,7 +573,9 @@ def main(page: ft.Page):
                                 [
                                     ft.TextButton(
                                         "重新选择内容",
-                                        on_click=lambda e, p=fpath: select_file_preview(p),
+                                        on_click=lambda e, p=fpath: select_file_preview(
+                                            p
+                                        ),
                                     ),
                                 ],
                                 spacing=5,
@@ -866,6 +872,9 @@ def main(page: ft.Page):
         ],
     )
 
+    # 初始宽度
+    col_widths = {"left": 250, "middle": 350}
+
     # 左栏 - 模板库
     sidebar = ft.Container(
         content=ft.Column(
@@ -877,10 +886,12 @@ def main(page: ft.Page):
             ],
             alignment=ft.MainAxisAlignment.START,
             scroll=ft.ScrollMode.AUTO,
+            expand=True,
+            tight=True,
         ),
+        width=col_widths["left"],
         padding=10,
         border_radius=10,
-        expand=1,  # flex factor 1
     )
 
     # 中间栏 - 项目文件树 (scroll 放在外层 Column 上，file_tree_column 直接作为子项)
@@ -915,10 +926,12 @@ def main(page: ft.Page):
             ],
             spacing=5,
             scroll=ft.ScrollMode.AUTO,
+            expand=True,
+            tight=True,
         ),
+        width=col_widths["middle"],
         padding=10,
         border_radius=10,
-        expand=2,
     )
 
     # 右栏 - 预览 + 输入
@@ -977,16 +990,45 @@ def main(page: ft.Page):
             spacing=0,
             expand=True,
         ),
-        expand=3,  # flex factor 3
+        expand=True,
         padding=15,
     )
+
+    # --- 关键修正：使用 primary_delta ---
+    def on_left_drag(e: ft.DragUpdateEvent):
+        # primary_delta 是当前轴向的偏移量
+        new_width = sidebar.width + e.primary_delta
+        if 100 < new_width < 600:
+            sidebar.width = new_width
+            sidebar.update()
+
+    def on_middle_drag(e: ft.DragUpdateEvent):
+        new_width = tree_panel.width + e.primary_delta
+        if 150 < new_width < 800:
+            tree_panel.width = new_width
+            tree_panel.update()
+
+    # 拖拽手柄
+    def resizer(on_drag_func):
+        return ft.GestureDetector(
+            content=ft.VerticalDivider(width=5, thickness=2, color=ft.Colors.BLUE_200),
+            # 使用针对性的横向拖拽事件
+            on_horizontal_drag_update=on_drag_func,
+            mouse_cursor=ft.MouseCursor.RESIZE_LEFT_RIGHT,
+        )
 
     # 三栏布局（与 test_layout.py 一致的模式）
     page.add(
         ft.Row(
-            [sidebar, tree_panel, main_area],
+            controls=[
+                sidebar,
+                resizer(on_left_drag),
+                tree_panel,
+                resizer(on_middle_drag),
+                main_area,
+            ],
             expand=True,
-            spacing=2,
+            spacing=0,
         )
     )
 
