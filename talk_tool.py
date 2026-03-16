@@ -278,11 +278,13 @@ def main(page: ft.Page):
     page.title = "AI 上下文聊天工具"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
-    page.window_width = 1400
-    page.window_height = 800
     # 设置窗口图标 (Windows 上有效，macOS Dock 图标需在打包时通过 --icon 设置)
     if page.window:
         page.window.icon = "app.ico"
+        page.window.width = 1200
+        page.window.height = 800
+        page.window.min_width = 1200
+        page.window.min_height = 800
 
     templates = {}
     selected_ids = set()
@@ -915,14 +917,6 @@ def main(page: ft.Page):
                     spacing=5,
                 ),
                 ft.Divider(),
-                ft.Container(
-                    content=selected_files_view,
-                    expand=True,
-                    height=300,
-                    border=ft.Border.all(1, "grey_700"),
-                    border_radius=5,
-                    padding=10,
-                ),
             ],
             spacing=5,
             scroll=ft.ScrollMode.AUTO,
