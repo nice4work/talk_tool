@@ -275,7 +275,7 @@ def pick_directory_native(title="选择文件夹"):
 
 
 def main(page: ft.Page):
-    page.title = "ContextFlow Pro (Flet 版)"
+    page.title = "AI 上下文聊天工具"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
     page.window_width = 1400
@@ -327,7 +327,7 @@ def main(page: ft.Page):
 
     # 预览文本框
     preview_text = ft.TextField(
-        label="👁️ 拼接预览 (最终发送内容)",
+        label="👁️预览",
         multiline=True,
         min_lines=10,
         read_only=True,
