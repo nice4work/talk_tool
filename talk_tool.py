@@ -332,7 +332,7 @@ def main(page: ft.Page):
         label="👁️预览",
         multiline=True,
         min_lines=10,
-        read_only=True,
+        read_only=False,
         border_color="transparent",
         focused_border_color="transparent",
         content_padding=15,
